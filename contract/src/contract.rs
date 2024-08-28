@@ -30,3 +30,104 @@ pub fn instantiate(
         .add_attribute("method", "instantiate"))
 }
 
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn execute(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    msg: ExecuteMsg,
+) -> Result<Response, ContractError> {
+    match msg {
+        ExecuteMsg::NewEntry {
+            description,
+            priority,
+            owner,
+        } => execute_create_new_entry(deps, info, description, priority, owner),
+        ExecuteMsg::UpdateEntry {
+            id,
+            description,
+            status,
+            priority,
+            owner
+        } => execute_update_entry(deps, info, id, description, status, priority, owner),
+        ExecuteMsg::DeleteEntry { id, owner } => execute_delete_entry(deps, info, id, owner),
+    }
+}
+
+pub fn execute_delete_entry(
+    deps: DepsMut,
+    _info: MessageInfo,
+    id: u64,
+    owner: String,
+    ) -> Result<Response, ContractError> {
+
+        Ok(Response::new()
+        .add_attribute("method", "execute_delete_entry")
+        .add_attribute("new_entry_id", id.to_string()))
+
+}    
+
+pub fn execute_update_entry(
+    deps: DepsMut,
+    _info: MessageInfo,
+    id: u64,
+    description: String,
+    status: Status,
+    priority: Option<Priority>,
+    owner: String,
+    ) -> Result<Response, ContractError> {
+
+        Ok(Response::new()
+        .add_attribute("method", "execute_update_entry")
+        .add_attribute("new_entry_id", id.to_string()))
+
+}
+
+pub fn execute_create_new_entry(
+    deps: DepsMut,
+    _info: MessageInfo,
+    description: String,
+    priority: Option<Priority>,
+    owner: String,
+) -> Result<Response, ContractError> {
+    let id = ENTRY_SEQ.update::<_, cosmwasm_std::StdError>(deps.storage, |id| Ok(id.add(1)))?;
+    let new_entry = Entry {
+        id,
+        description,
+        status: Status::ToDo,
+        priority: priority.unwrap_or(Priority::None),
+        owner,
+    };
+    LIST.save(deps.storage, id, &new_entry)?;
+    Ok(Response::new()
+        .add_attribute("method", "execute_create_new_entry")
+        .add_attribute("new_entry_id", id.to_string()))
+}
+
+
+
+// Limits for pagination
+const MAX_LIMIT: u32 = 30;
+const DEFAULT_LIMIT: u32 = 10;
+
+pub fn query_user_list(deps: Deps, user: String, start_after: Option<u64>, limit: Option<u32>) -> StdResult<ListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(Bound::exclusive);
+    
+    let entries: StdResult<Vec<_>> = LIST
+        .range(deps.storage, start, None, Order::Ascending)
+        .filter(|item| {
+            if let Ok((_, entry)) = item {
+                entry.owner == user
+            } else {
+                false
+            }
+        })
+        .take(limit)
+        .collect();
+
+    let result = ListResponse {
+        entries: entries?.into_iter().map(|(_, entry)| entry).collect(),
+    };
+    Ok(result)
+}
